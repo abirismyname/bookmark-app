@@ -22,8 +22,14 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 main {
@@ -107,6 +113,7 @@ h1 em {
 }
 
 .form-panel,
+.organization,
 .list-panel {
   padding: clamp(28px, 5vw, 58px);
 }
@@ -127,11 +134,11 @@ h2 {
   letter-spacing: -0.04em;
 }
 
-form {
+.form-panel form {
   margin-top: 42px;
 }
 
-label {
+.form-panel label {
   display: block;
   margin-bottom: 10px;
   color: #cad9cd;
@@ -144,7 +151,7 @@ label {
   gap: 10px;
 }
 
-input {
+.form-panel input {
   min-width: 0;
   padding: 17px 18px;
   border: 1px solid #789080;
@@ -155,11 +162,11 @@ input {
   transition: border-color 160ms, background 160ms;
 }
 
-input::placeholder {
+.form-panel input::placeholder {
   color: #9bb0a1;
 }
 
-input:focus {
+.form-panel input:focus {
   border-color: #eef0bd;
   background: rgba(255, 255, 255, 0.1);
 }
@@ -174,7 +181,7 @@ input:disabled {
   opacity: 0.6;
 }
 
-form button {
+.form-panel form button {
   display: flex;
   align-items: center;
   gap: 22px;
@@ -186,11 +193,11 @@ form button {
   transition: background 160ms, transform 160ms;
 }
 
-form button:hover:not(:disabled) {
+.form-panel form button:hover:not(:disabled) {
   background: #f4f6cb;
 }
 
-form button:active:not(:disabled) {
+.form-panel form button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
@@ -203,6 +210,76 @@ form button:active:not(:disabled) {
 
 .message.error {
   color: #ffc9b9;
+}
+
+.organization {
+  border-bottom: 1px solid #cfd1cb;
+  background: rgba(238, 240, 229, 0.72);
+}
+
+.organization-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+}
+
+.organization-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) repeat(2, minmax(150px, 0.6fr));
+  gap: 14px;
+  margin-top: 30px;
+}
+
+.control-field label,
+.edit-field label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #637068;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.control-field input,
+.control-field select,
+.edit-field input,
+.edit-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid #b8beb7;
+  border-radius: 0;
+  outline: none;
+  color: #17211b;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.control-field input:focus,
+.control-field select:focus,
+.edit-field input:focus,
+.edit-field textarea:focus {
+  border-color: #397b52;
+  box-shadow: 0 0 0 2px rgba(57, 123, 82, 0.14);
+}
+
+.reset-button {
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid #829087;
+  color: #397b52;
+  background: transparent;
+  font-size: 12px;
+}
+
+.reset-button:disabled {
+  border-color: transparent;
+}
+
+.results-summary {
+  min-height: 18px;
+  margin: 14px 0 0;
+  color: #68746c;
+  font-size: 12px;
 }
 
 .list-heading {
@@ -246,12 +323,22 @@ form button:active:not(:disabled) {
 }
 
 .bookmark {
+  padding: 26px 0;
+  border-bottom: 1px solid #d7d8d3;
+}
+
+.bookmark-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 24px;
   align-items: center;
-  padding: 26px 0;
-  border-bottom: 1px solid #d7d8d3;
+}
+
+.bookmark-title {
+  margin: 0 0 7px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
 }
 
 .bookmark-url {
@@ -267,6 +354,33 @@ form button:active:not(:disabled) {
 
 .bookmark-url:hover {
   color: #397b52;
+}
+
+.bookmark-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookmark-tags li {
+  padding: 4px 7px;
+  border: 1px solid #c4cdc6;
+  color: #45634f;
+  background: #edf1e9;
+  font-family: "DM Mono", monospace;
+  font-size: 10px;
+}
+
+.bookmark-notes {
+  max-width: 72ch;
+  margin: 12px 0 0;
+  color: #5f6862;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .slug-row {
@@ -286,6 +400,13 @@ form button:active:not(:disabled) {
   font-size: 13px;
 }
 
+.bookmark-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.edit-button,
 .remove-button {
   padding: 7px 0;
   border: 0;
@@ -295,9 +416,62 @@ form button:active:not(:disabled) {
   font-size: 12px;
 }
 
+.edit-button:hover {
+  color: #397b52;
+  border-color: #397b52;
+}
+
 .remove-button:hover {
   color: #963c2f;
   border-color: #963c2f;
+}
+
+.bookmark-edit-form {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid #b8c2ba;
+  background: #f4f3ed;
+}
+
+.edit-field label {
+  display: block;
+}
+
+.edit-field textarea {
+  resize: vertical;
+}
+
+.edit-field > span {
+  display: block;
+  margin-top: 6px;
+  color: #768079;
+  font-size: 11px;
+}
+
+.edit-error {
+  margin: 0;
+  color: #963c2f;
+  font-size: 12px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.edit-actions button {
+  min-height: 40px;
+  padding: 0 15px;
+  border: 1px solid #397b52;
+  color: #f8f4eb;
+  background: #397b52;
+  font-weight: 600;
+}
+
+.edit-actions button[data-action="cancel"] {
+  color: #4d5b52;
+  background: transparent;
 }
 
 @media (max-width: 760px) {
@@ -324,9 +498,17 @@ form button:active:not(:disabled) {
     grid-template-columns: 1fr;
   }
 
-  form button {
+  .form-panel form button {
     justify-content: space-between;
     min-height: 54px;
+  }
+
+  .organization-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .search-field {
+    grid-column: 1 / -1;
   }
 }
 
@@ -341,6 +523,7 @@ form button:active:not(:disabled) {
   }
 
   .form-panel,
+  .organization,
   .list-panel {
     padding: 28px 20px;
   }
@@ -351,6 +534,27 @@ form button:active:not(:disabled) {
 
   .bookmark {
     gap: 16px;
+  }
+
+  .organization-heading,
+  .bookmark-view {
+    align-items: start;
+  }
+
+  .organization-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .search-field {
+    grid-column: auto;
+  }
+
+  .bookmark-view {
+    grid-template-columns: 1fr;
+  }
+
+  .bookmark-actions {
+    justify-content: flex-start;
   }
 }
 

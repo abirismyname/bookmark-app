@@ -4,14 +4,14 @@
       <p class="step">03 / Your shortlist</p>
       <h2>Saved bookmarks</h2>
     </div>
-    <span id="bookmark-count" class="count">0 links</span>
+    <span id="bookmark-count" class="count" aria-hidden="true">0 links</span>
   </div>
 
   <div id="empty-state" class="empty-state">
     <span aria-hidden="true">↳</span>
     <p id="empty-state-message">Your saved links will appear here.</p>
   </div>
-  <ul id="bookmark-list" aria-live="polite"></ul>
+  <ul id="bookmark-list" aria-label="Saved bookmarks"></ul>
 </div>
 
 <template id="bookmark-template">
@@ -35,11 +35,16 @@
       </div>
     </div>
 
-    <form class="bookmark-edit-form" hidden novalidate>
+    <form class="bookmark-edit-form" aria-label="Edit bookmark" hidden novalidate>
       <div class="edit-field">
         <label>
           <span>Title</span>
-          <input name="title" type="text" maxlength="120" required />
+          <input
+            name="title"
+            type="text"
+            maxlength="120"
+            required
+          />
         </label>
       </div>
       <div class="edit-field">
@@ -60,7 +65,7 @@
           <textarea name="notes" maxlength="2000" rows="3"></textarea>
         </label>
       </div>
-      <p class="edit-error" role="alert" hidden></p>
+      <p class="edit-error" role="alert" aria-live="assertive" hidden></p>
       <div class="edit-actions">
         <button type="submit">Save changes</button>
         <button type="button" data-action="cancel">Cancel</button>

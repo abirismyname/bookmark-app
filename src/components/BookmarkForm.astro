@@ -13,13 +13,20 @@
         placeholder="https://example.com/article"
         required
         aria-describedby="form-message"
+        aria-errormessage="form-message"
       />
       <button type="submit">
         Save link
         <span aria-hidden="true">↗</span>
       </button>
     </div>
-    <p id="form-message" class="message" role="status" aria-live="polite">
+    <p
+      id="form-message"
+      class="message"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       Enter a complete http or https URL.
     </p>
   </form>

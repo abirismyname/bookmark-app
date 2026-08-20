@@ -6,17 +6,23 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build",
+    "build": "astro build && node scripts/generate-service-worker.mjs",
     "preview": "astro preview",
     "check": "astro check",
-    "test": "vitest run"
+    "test": "vitest run src",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "validate": "npm run test && npm run check && npm run build && playwright test"
   },
   "dependencies": {
-    "astro": "^5.13.5"
+    "astro": "^7.2.1"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.4",
+    "@astrojs/check": "^0.9.10",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "workbox-build": "^7.4.1"
   }
 }

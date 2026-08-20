@@ -10,20 +10,26 @@ const pageTitle = "Shortlist — Local bookmarks";
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
       content="Save links with short local slugs, right in your browser."
     />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔖</text></svg>"
-    />
+    <meta name="theme-color" content="#244b35" />
+    <meta name="color-scheme" content="light" />
+    <meta name="application-name" content="Shortlist" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Shortlist" />
+    <link rel="icon" href="/icons/shortlist.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/shortlist-apple-touch.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>{pageTitle}</title>
   </head>
   <body>
-    <main>
-      <Hero />
+    <a class="skip-link" href="#main-content">Skip to bookmarks</a>
+    <Hero />
+    <main id="main-content" tabindex="-1">
       <BookmarkWorkspace />
     </main>
 
@@ -32,5 +38,6 @@ const pageTitle = "Shortlist — Local bookmarks";
 
       initializeBookmarkController();
     </script>
+    <script is:inline src="/registerSW.js"></script>
   </body>
 </html>

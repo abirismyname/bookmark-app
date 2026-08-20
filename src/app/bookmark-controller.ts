@@ -8,11 +8,50 @@ import {
   type BookmarkSort,
 } from "../domain/bookmark";
 import {
+  BookmarkImportError,
+  assertImportFile,
+  bookmarkExportFileName,
+  decodeBookmarkImport,
+  formatByteSize,
+  serializeBookmarkExport,
+} from "../domain/bookmark-transfer";
+import {
+  describeImportAdjustments,
+  planBookmarkImport,
+  summarizeImportPlan,
+  type BookmarkImportPlan,
+  type ImportDuplicateStrategy,
+} from "../domain/bookmark-import-plan";
+import {
   BookmarkStorageError,
+  clearBookmarks,
+  describeRawPayload,
   loadBookmarks,
+  readRawBookmarkPayloads,
   saveBookmarks,
+  type RawBookmarkPayload,
   type StorageLike,
 } from "../storage/bookmark-storage";
+
+interface TransferElements {
+  exportButton: HTMLButtonElement;
+  importFile: HTMLInputElement;
+  importStrategy: HTMLSelectElement;
+  importPreview: HTMLElement;
+  importSummary: HTMLElement;
+  importDetails: HTMLUListElement;
+  confirmImport: HTMLButtonElement;
+  cancelImport: HTMLButtonElement;
+  transferMessage: HTMLElement;
+  recoveryPanel: HTMLElement;
+  recoveryDetails: HTMLElement;
+  downloadRaw: HTMLButtonElement;
+  downloadAllRaw: HTMLButtonElement;
+  resetStorage: HTMLButtonElement;
+  resetConfirm: HTMLElement;
+  confirmReset: HTMLButtonElement;
+  cancelReset: HTMLButtonElement;
+}
 
 interface BookmarkElements {
   form: HTMLFormElement;
@@ -29,6 +68,18 @@ interface BookmarkElements {
   sort: HTMLSelectElement;
   reset: HTMLButtonElement;
   resultsSummary: HTMLElement;
+  transfer: TransferElements;
+}
+
+/** Grace period before an object URL is released, so the download can start. */
+const DOWNLOAD_RELEASE_DELAY_MS = 60_000;
+
+interface PendingImport {
+  fileName: string;
+  candidates: Bookmark[];
+  plan: BookmarkImportPlan;
+  replacesUnreadable: boolean;
+  preserveExistingMetadata: boolean;
 }
 
 interface BookmarkDraft {
@@ -50,6 +101,10 @@ export function initializeBookmarkController(
   let activeTag = "";
   let activeSort: BookmarkSort = "newest";
   let activeDraft: BookmarkDraft | null = null;
+  let pendingImport: PendingImport | null = null;
+  let rawPayload: RawBookmarkPayload | null = null;
+  let rawPayloads: RawBookmarkPayload[] = [];
+  let importRequest = 0;
 
   try {
     activeStorage = storage ?? window.localStorage;
@@ -60,6 +115,10 @@ export function initializeBookmarkController(
     setMessage(elements, storageErrorMessage(error), true);
     elements.input.disabled = true;
     elements.submit.disabled = true;
+    rawPayloads = readRawPayloadsSafely(activeStorage);
+    rawPayload = rawPayloads[0] ?? null;
+    showRecovery(elements, error, rawPayload);
+    elements.transfer.downloadAllRaw.hidden = rawPayloads.length < 2;
   }
 
   render(elements, bookmarks);
@@ -88,6 +147,7 @@ export function initializeBookmarkController(
     elements.form.reset();
     setMessage(elements, `Saved as /${bookmark.slug}.`);
     render(elements, bookmarks);
+    refreshPendingImport();
     elements.input.focus();
   });
 
@@ -133,6 +193,7 @@ export function initializeBookmarkController(
     if (activeDraft?.id === item.dataset.bookmarkId) activeDraft = null;
     setMessage(elements, "Bookmark removed.");
     render(elements, bookmarks);
+    refreshPendingImport();
   });
 
   elements.list.addEventListener("submit", (event) => {
@@ -192,6 +253,7 @@ export function initializeBookmarkController(
     activeDraft = null;
     setMessage(elements, `Updated “${updated.title}”.`);
     render(elements, bookmarks);
+    refreshPendingImport();
   });
 
   elements.list.addEventListener("input", (event) => {
@@ -255,6 +317,243 @@ export function initializeBookmarkController(
     elements.search.focus();
   });
 
+  elements.transfer.exportButton.addEventListener("click", () => {
+    if (!storageReady) {
+      setTransferMessage(
+        elements,
+        "Saved bookmarks could not be read, so there is nothing valid to export.",
+        true,
+      );
+      return;
+    }
+
+    const exportedAt = new Date();
+    downloadFile(
+      elements,
+      bookmarkExportFileName(exportedAt),
+      serializeBookmarkExport(bookmarks, exportedAt),
+    );
+    setTransferMessage(
+      elements,
+      `Exported ${bookmarks.length} ${bookmarks.length === 1 ? "bookmark" : "bookmarks"}.`,
+    );
+  });
+
+  elements.transfer.importFile.addEventListener("change", () => {
+    void previewSelectedFile();
+  });
+
+  elements.transfer.importStrategy.addEventListener("change", () => {
+    refreshPendingImport();
+  });
+
+  elements.transfer.cancelImport.addEventListener("click", () => {
+    clearPendingImport();
+    setTransferMessage(elements, "Import cancelled. Nothing was changed.");
+    elements.transfer.importFile.focus();
+  });
+
+  elements.transfer.confirmImport.addEventListener("click", () => {
+    const pending = pendingImport;
+    if (!pending || !activeStorage) return;
+
+    // Re-plan against the collection as it stands right now: the preview may
+    // have been built before a bookmark was added, edited, or removed.
+    let plan: BookmarkImportPlan;
+    try {
+      plan = buildPlan(
+        pending.candidates,
+        pending.replacesUnreadable,
+        pending.preserveExistingMetadata,
+      );
+    } catch (error) {
+      clearPendingImport();
+      setTransferMessage(elements, transferErrorMessage(error), true);
+      return;
+    }
+
+    try {
+      saveBookmarks(activeStorage, plan.bookmarks);
+    } catch (error) {
+      setTransferMessage(elements, storageErrorMessage(error), true);
+      return;
+    }
+
+    bookmarks = plan.bookmarks;
+    storageReady = true;
+    rawPayload = null;
+    rawPayloads = [];
+    elements.input.disabled = false;
+    elements.submit.disabled = false;
+    hideRecovery(elements);
+    clearPendingImport();
+    setMessage(elements, "Enter a complete http or https URL.");
+    setTransferMessage(
+      elements,
+      `Imported ${plan.added} added, ${plan.replaced} replaced, ${plan.skipped} skipped.`,
+    );
+    render(elements, bookmarks);
+  });
+
+  elements.transfer.downloadRaw.addEventListener("click", () => {
+    if (!rawPayload) return;
+    downloadFile(
+      elements,
+      `shortlist-raw-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      rawPayload.value,
+    );
+    setTransferMessage(
+      elements,
+      `Downloaded the raw contents of ${rawPayload.key}. Nothing was changed.`,
+    );
+  });
+
+  elements.transfer.downloadAllRaw.addEventListener("click", () => {
+    if (rawPayloads.length < 2) return;
+    downloadFile(
+      elements,
+      `shortlist-all-storage-${new Date().toISOString().slice(0, 10)}.json`,
+      `${JSON.stringify({ version: 1, payloads: rawPayloads }, null, 2)}\n`,
+    );
+    setTransferMessage(
+      elements,
+      `Downloaded all ${rawPayloads.length} stored Shortlist versions. Nothing was changed.`,
+    );
+  });
+
+  elements.transfer.resetStorage.addEventListener("click", () => {
+    elements.transfer.resetConfirm.hidden = false;
+    elements.transfer.confirmReset.focus();
+  });
+
+  elements.transfer.cancelReset.addEventListener("click", () => {
+    elements.transfer.resetConfirm.hidden = true;
+    setTransferMessage(elements, "Reset cancelled. Nothing was erased.");
+    elements.transfer.resetStorage.focus();
+  });
+
+  elements.transfer.confirmReset.addEventListener("click", () => {
+    if (!activeStorage) return;
+    try {
+      clearBookmarks(activeStorage);
+    } catch (error) {
+      setTransferMessage(elements, storageErrorMessage(error), true);
+      return;
+    }
+
+    bookmarks = [];
+    storageReady = true;
+    rawPayload = null;
+    rawPayloads = [];
+    elements.input.disabled = false;
+    elements.submit.disabled = false;
+    hideRecovery(elements);
+    clearPendingImport();
+    setMessage(elements, "Enter a complete http or https URL.");
+    setTransferMessage(elements, "Local Shortlist data was erased. Starting fresh.");
+    render(elements, bookmarks);
+  });
+
+  async function previewSelectedFile(): Promise<void> {
+    clearPendingImport(false);
+    const request = importRequest;
+    const file = elements.transfer.importFile.files?.[0];
+    if (!file) return;
+
+    if (!activeStorage) {
+      setTransferMessage(
+        elements,
+        "Browser storage is unavailable, so an import cannot be saved.",
+        true,
+      );
+      resetFileInput();
+      return;
+    }
+
+    try {
+      assertImportFile(file);
+      const decoded = decodeBookmarkImport(await file.text());
+      // A newer selection took over while this file was being read.
+      if (request !== importRequest) return;
+
+      const replacesUnreadable = !storageReady;
+      const preserveExistingMetadata =
+        decoded.format === "storage-v1" || decoded.format === "storage-v2";
+      pendingImport = {
+        fileName: file.name,
+        candidates: decoded.bookmarks,
+        plan: buildPlan(
+          decoded.bookmarks,
+          replacesUnreadable,
+          preserveExistingMetadata,
+        ),
+        replacesUnreadable,
+        preserveExistingMetadata,
+      };
+      showImportPreview(elements, pendingImport);
+      setTransferMessage(
+        elements,
+        `Read ${file.name} (${formatByteSize(file.size)}). Nothing has changed yet.`,
+      );
+      elements.transfer.confirmImport.focus();
+    } catch (error) {
+      if (request !== importRequest) return;
+      clearPendingImport();
+      setTransferMessage(elements, transferErrorMessage(error), true);
+      resetFileInput();
+    }
+  }
+
+  /** Keeps an open preview honest after the collection changes underneath it. */
+  function refreshPendingImport(): void {
+    const pending = pendingImport;
+    if (!pending) return;
+
+    try {
+      pendingImport = {
+        ...pending,
+        plan: buildPlan(
+          pending.candidates,
+          pending.replacesUnreadable,
+          pending.preserveExistingMetadata,
+        ),
+      };
+      showImportPreview(elements, pendingImport);
+    } catch (error) {
+      clearPendingImport();
+      setTransferMessage(elements, transferErrorMessage(error), true);
+    }
+  }
+
+  function buildPlan(
+    candidates: readonly Bookmark[],
+    replacesUnreadable: boolean,
+    preserveExistingMetadata: boolean,
+  ): BookmarkImportPlan {
+    return planBookmarkImport(
+      replacesUnreadable ? [] : bookmarks,
+      candidates,
+      importStrategy(elements),
+      {},
+      { preserveExistingMetadataOnReplace: preserveExistingMetadata },
+    );
+  }
+
+  function clearPendingImport(resetInput = true): void {
+    // Also abandons any in-flight file read so a late result cannot revive the
+    // preview after the import was cancelled or the storage was reset.
+    importRequest += 1;
+    pendingImport = null;
+    elements.transfer.importPreview.hidden = true;
+    elements.transfer.importDetails.replaceChildren();
+    elements.transfer.importSummary.textContent = "";
+    if (resetInput) resetFileInput();
+  }
+
+  function resetFileInput(): void {
+    elements.transfer.importFile.value = "";
+  }
+
   function render(elements: BookmarkElements, allBookmarks: readonly Bookmark[]): void {
     const tags = collectTags(allBookmarks);
     if (activeTag && !tags.includes(activeTag)) activeTag = "";
@@ -290,6 +589,7 @@ export function initializeBookmarkController(
 
     const isDefaultView = !activeQuery.trim() && !activeTag && activeSort === "newest";
     elements.reset.disabled = isDefaultView;
+    elements.transfer.exportButton.disabled = !storageReady;
     elements.resultsSummary.textContent = selectionSummary(
       visible,
       total,
@@ -356,7 +656,182 @@ function getElements(documentRoot: Document): BookmarkElements {
     sort,
     reset,
     resultsSummary,
+    transfer: getTransferElements(documentRoot),
   };
+}
+
+function getTransferElements(documentRoot: Document): TransferElements {
+  const exportButton =
+    documentRoot.querySelector<HTMLButtonElement>("#export-bookmarks");
+  const importFile = documentRoot.querySelector<HTMLInputElement>("#import-file");
+  const importStrategy =
+    documentRoot.querySelector<HTMLSelectElement>("#import-strategy");
+  const importPreview = documentRoot.querySelector<HTMLElement>("#import-preview");
+  const importSummary = documentRoot.querySelector<HTMLElement>("#import-summary");
+  const importDetails =
+    documentRoot.querySelector<HTMLUListElement>("#import-details");
+  const confirmImport =
+    documentRoot.querySelector<HTMLButtonElement>("#confirm-import");
+  const cancelImport =
+    documentRoot.querySelector<HTMLButtonElement>("#cancel-import");
+  const transferMessage =
+    documentRoot.querySelector<HTMLElement>("#transfer-message");
+  const recoveryPanel = documentRoot.querySelector<HTMLElement>("#recovery-panel");
+  const recoveryDetails =
+    documentRoot.querySelector<HTMLElement>("#recovery-details");
+  const downloadRaw = documentRoot.querySelector<HTMLButtonElement>("#download-raw");
+  const downloadAllRaw =
+    documentRoot.querySelector<HTMLButtonElement>("#download-all-raw");
+  const resetStorage =
+    documentRoot.querySelector<HTMLButtonElement>("#reset-storage");
+  const resetConfirm = documentRoot.querySelector<HTMLElement>("#reset-confirm");
+  const confirmReset =
+    documentRoot.querySelector<HTMLButtonElement>("#confirm-reset");
+  const cancelReset = documentRoot.querySelector<HTMLButtonElement>("#cancel-reset");
+
+  if (
+    !exportButton ||
+    !importFile ||
+    !importStrategy ||
+    !importPreview ||
+    !importSummary ||
+    !importDetails ||
+    !confirmImport ||
+    !cancelImport ||
+    !transferMessage ||
+    !recoveryPanel ||
+    !recoveryDetails ||
+    !downloadRaw ||
+    !downloadAllRaw ||
+    !resetStorage ||
+    !resetConfirm ||
+    !confirmReset ||
+    !cancelReset
+  ) {
+    throw new Error("Bookmark transfer interface failed to initialize.");
+  }
+
+  return {
+    exportButton,
+    importFile,
+    importStrategy,
+    importPreview,
+    importSummary,
+    importDetails,
+    confirmImport,
+    cancelImport,
+    transferMessage,
+    recoveryPanel,
+    recoveryDetails,
+    downloadRaw,
+    downloadAllRaw,
+    resetStorage,
+    resetConfirm,
+    confirmReset,
+    cancelReset,
+  };
+}
+
+function importStrategy(elements: BookmarkElements): ImportDuplicateStrategy {
+  return elements.transfer.importStrategy.value === "replace" ? "replace" : "skip";
+}
+
+function setTransferMessage(
+  elements: BookmarkElements,
+  text: string,
+  isError = false,
+): void {
+  elements.transfer.transferMessage.textContent = text;
+  elements.transfer.transferMessage.classList.toggle("error", isError);
+}
+
+function showImportPreview(
+  elements: BookmarkElements,
+  pending: PendingImport,
+): void {
+  const documentRoot = elements.transfer.importDetails.ownerDocument;
+  const details = describeImportAdjustments(pending.plan);
+  if (pending.replacesUnreadable) {
+    details.unshift(
+      "Saved data cannot be read, so applying this import replaces it entirely.",
+    );
+  }
+
+  elements.transfer.importSummary.textContent = `${pending.fileName}: ${summarizeImportPlan(pending.plan)}`;
+  elements.transfer.importDetails.replaceChildren();
+  for (const detail of details) {
+    const item = documentRoot.createElement("li");
+    item.textContent = detail;
+    elements.transfer.importDetails.append(item);
+  }
+  elements.transfer.importDetails.hidden = details.length === 0;
+  elements.transfer.importPreview.hidden = false;
+}
+
+function showRecovery(
+  elements: BookmarkElements,
+  error: unknown,
+  payload: RawBookmarkPayload | null,
+): void {
+  const reason =
+    error instanceof BookmarkStorageError ? error.message : "Unknown storage error.";
+  if (!payload) {
+    elements.transfer.recoveryDetails.textContent = `${reason} No stored payload could be read back for inspection.`;
+    elements.transfer.downloadRaw.disabled = true;
+  } else {
+    const diagnostics = describeRawPayload(payload);
+    elements.transfer.recoveryDetails.textContent =
+      `${reason} Key ${diagnostics.key} holds ${formatByteSize(diagnostics.bytes)} of ` +
+      `${diagnostics.parsable ? `JSON (${diagnostics.shape})` : "text that is not valid JSON"}. ` +
+      `Starts with: ${diagnostics.preview}`;
+    elements.transfer.downloadRaw.disabled = false;
+  }
+
+  elements.transfer.resetConfirm.hidden = true;
+  elements.transfer.recoveryPanel.hidden = false;
+}
+
+function hideRecovery(elements: BookmarkElements): void {
+  elements.transfer.recoveryPanel.hidden = true;
+  elements.transfer.resetConfirm.hidden = true;
+}
+
+function readRawPayloadsSafely(storage: StorageLike | null): RawBookmarkPayload[] {
+  if (!storage) return [];
+  try {
+    return readRawBookmarkPayloads(storage);
+  } catch {
+    return [];
+  }
+}
+
+function downloadFile(
+  elements: BookmarkElements,
+  fileName: string,
+  contents: string,
+): void {
+  const documentRoot = elements.transfer.exportButton.ownerDocument;
+  const url = URL.createObjectURL(
+    new Blob([contents], { type: "application/json" }),
+  );
+  const link = documentRoot.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noreferrer";
+  documentRoot.body.append(link);
+  link.click();
+  link.remove();
+  // Revoking in the same task aborts the download in some browsers, which would
+  // silently lose a recovery backup the user still needs.
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_RELEASE_DELAY_MS);
+}
+
+function transferErrorMessage(error: unknown): string {
+  if (error instanceof BookmarkImportError) return error.message;
+  if (error instanceof BookmarkStorageError) return storageErrorMessage(error);
+  if (error instanceof Error) return `That file could not be read: ${error.message}`;
+
+  return "That file could not be read.";
 }
 
 function storageErrorMessage(error: unknown): string {

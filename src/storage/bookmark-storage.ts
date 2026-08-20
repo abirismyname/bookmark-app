@@ -10,6 +10,13 @@ export const VERSION_2_BOOKMARKS_KEY = "shortlist.bookmarks.v2";
 export const CURRENT_BOOKMARKS_KEY = "shortlist.bookmarks.v3";
 export const CURRENT_STORAGE_VERSION = 3;
 
+/** Every key Shortlist has ever written, newest first. */
+export const BOOKMARK_STORAGE_KEYS = [
+  CURRENT_BOOKMARKS_KEY,
+  VERSION_2_BOOKMARKS_KEY,
+  LEGACY_BOOKMARKS_KEY,
+] as const;
+
 export interface BookmarkStorageEnvelope {
   version: typeof CURRENT_STORAGE_VERSION;
   bookmarks: Bookmark[];
@@ -18,13 +25,15 @@ export interface BookmarkStorageEnvelope {
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export type BookmarkStorageErrorKind =
   | "read"
   | "invalid"
   | "write"
-  | "migration";
+  | "migration"
+  | "remove";
 
 export class BookmarkStorageError extends Error {
   constructor(
@@ -40,6 +49,19 @@ export class BookmarkStorageError extends Error {
 export interface LoadedBookmarks {
   bookmarks: Bookmark[];
   source: "empty" | "current" | "version2" | "legacy";
+}
+
+export interface RawBookmarkPayload {
+  key: string;
+  value: string;
+}
+
+export interface RawPayloadDiagnostics {
+  key: string;
+  bytes: number;
+  parsable: boolean;
+  shape: string;
+  preview: string;
 }
 
 export function serializeBookmarks(bookmarks: readonly Bookmark[]): string {
@@ -156,6 +178,78 @@ function readItem(storage: StorageLike, key: string): string | null {
       "read",
       { cause },
     );
+  }
+}
+
+/**
+ * Returns the newest stored payload exactly as written, without parsing it, so
+ * unreadable data can be inspected and downloaded before anything is changed.
+ */
+export function readRawBookmarks(storage: StorageLike): RawBookmarkPayload | null {
+  return readRawBookmarkPayloads(storage)[0] ?? null;
+}
+
+/** Returns every stored payload verbatim, newest first, for a complete backup. */
+export function readRawBookmarkPayloads(storage: StorageLike): RawBookmarkPayload[] {
+  const payloads: RawBookmarkPayload[] = [];
+  for (const key of BOOKMARK_STORAGE_KEYS) {
+    const value = readItem(storage, key);
+    if (value !== null) payloads.push({ key, value });
+  }
+
+  return payloads;
+}
+
+export function describeRawPayload(payload: RawBookmarkPayload): RawPayloadDiagnostics {
+  let parsable = true;
+  let shape = "unknown";
+  try {
+    const value: unknown = JSON.parse(payload.value);
+    if (Array.isArray(value)) shape = `array of ${value.length} entries`;
+    else if (value === null) shape = "null";
+    else if (typeof value === "object") {
+      shape = `object with keys ${Object.keys(value).map((key) => `“${key}”`).join(", ") || "(none)"}`;
+    } else shape = typeof value;
+  } catch {
+    parsable = false;
+  }
+
+  return {
+    key: payload.key,
+    bytes: new TextEncoder().encode(payload.value).length,
+    parsable,
+    shape,
+    preview: payload.value.replace(/\s+/gu, " ").slice(0, 180),
+  };
+}
+
+/**
+ * Removes every Shortlist key. Older keys are removed first so a failure part
+ * way through still leaves the newest raw payload in place to be recovered.
+ */
+export function clearBookmarks(storage: StorageLike): void {
+  const removeItem = storage.removeItem?.bind(storage);
+  if (!removeItem) {
+    throw new BookmarkStorageError(
+      "This browser storage does not support removing saved data.",
+      "remove",
+    );
+  }
+
+  const removed: string[] = [];
+  for (const key of [...BOOKMARK_STORAGE_KEYS].reverse()) {
+    try {
+      removeItem(key);
+      removed.push(key);
+    } catch (cause) {
+      throw new BookmarkStorageError(
+        removed.length === 0
+          ? "Saved data could not be removed. Download the raw backup and check your browser storage settings."
+          : `Reset stopped after removing ${removed.join(", ")}. Newer stored data remains available; download it before trying again.`,
+        "remove",
+        { cause },
+      );
+    }
   }
 }
 

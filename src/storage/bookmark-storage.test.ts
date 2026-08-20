@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Bookmark } from "../domain/bookmark";
 import {
+  BOOKMARK_STORAGE_KEYS,
   BookmarkStorageError,
   CURRENT_BOOKMARKS_KEY,
   CURRENT_STORAGE_VERSION,
   LEGACY_BOOKMARKS_KEY,
   VERSION_2_BOOKMARKS_KEY,
+  clearBookmarks,
+  describeRawPayload,
   loadBookmarks,
   parseBookmarkEnvelope,
   parseLegacyBookmarks,
   parseVersion2Envelope,
+  readRawBookmarkPayloads,
+  readRawBookmarks,
   saveBookmarks,
   serializeBookmarks,
   type StorageLike,
@@ -45,6 +50,10 @@ class MemoryStorage implements StorageLike {
 
   setItem(key: string, value: string): void {
     this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
   }
 }
 
@@ -219,6 +228,172 @@ describe("saveBookmarks", () => {
     };
 
     expectStorageError(() => saveBookmarks(storage, migratedBookmarks), "write");
+  });
+});
+
+describe("raw payload recovery", () => {
+  it("lists every storage key newest first", () => {
+    expect([...BOOKMARK_STORAGE_KEYS]).toEqual([
+      CURRENT_BOOKMARKS_KEY,
+      VERSION_2_BOOKMARKS_KEY,
+      LEGACY_BOOKMARKS_KEY,
+    ]);
+  });
+
+  it("returns null when nothing is stored", () => {
+    expect(readRawBookmarks(new MemoryStorage())).toBeNull();
+  });
+
+  it("returns the newest malformed payload verbatim without parsing it", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CURRENT_BOOKMARKS_KEY, "{ broken");
+    storage.setItem(LEGACY_BOOKMARKS_KEY, "[]");
+
+    expect(readRawBookmarks(storage)).toEqual({
+      key: CURRENT_BOOKMARKS_KEY,
+      value: "{ broken",
+    });
+  });
+
+  it("returns every stored version verbatim for a complete recovery backup", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CURRENT_BOOKMARKS_KEY, "{ broken");
+    storage.setItem(VERSION_2_BOOKMARKS_KEY, '{"version":2,"bookmarks":[]}');
+    storage.setItem(LEGACY_BOOKMARKS_KEY, "[]");
+
+    expect(readRawBookmarkPayloads(storage)).toEqual([
+      { key: CURRENT_BOOKMARKS_KEY, value: "{ broken" },
+      {
+        key: VERSION_2_BOOKMARKS_KEY,
+        value: '{"version":2,"bookmarks":[]}',
+      },
+      { key: LEGACY_BOOKMARKS_KEY, value: "[]" },
+    ]);
+  });
+
+  it("falls back to older keys when the newest is absent", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(VERSION_2_BOOKMARKS_KEY, "{ also broken");
+
+    expect(readRawBookmarks(storage)?.key).toBe(VERSION_2_BOOKMARKS_KEY);
+  });
+
+  it("reports read failures explicitly", () => {
+    expectStorageError(
+      () =>
+        readRawBookmarks({
+          getItem: () => {
+            throw new Error("blocked");
+          },
+          setItem: () => {},
+        }),
+      "read",
+    );
+  });
+
+  it("describes unparsable data without throwing", () => {
+    const diagnostics = describeRawPayload({
+      key: CURRENT_BOOKMARKS_KEY,
+      value: "{ broken\n\tdata",
+    });
+
+    expect(diagnostics).toMatchObject({
+      key: CURRENT_BOOKMARKS_KEY,
+      bytes: 14,
+      parsable: false,
+      preview: "{ broken data",
+    });
+  });
+
+  it("describes parsable but invalid data", () => {
+    expect(
+      describeRawPayload({
+        key: CURRENT_BOOKMARKS_KEY,
+        value: '{"version":3,"bookmarks":"nope"}',
+      }),
+    ).toMatchObject({
+      parsable: true,
+      shape: 'object with keys \u201cversion\u201d, \u201cbookmarks\u201d',
+    });
+  });
+
+  it("truncates a long preview", () => {
+    expect(
+      describeRawPayload({ key: CURRENT_BOOKMARKS_KEY, value: "x".repeat(500) }).preview,
+    ).toHaveLength(180);
+  });
+});
+
+describe("explicit reset", () => {
+  it("removes every Shortlist key", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CURRENT_BOOKMARKS_KEY, "{ broken");
+    storage.setItem(VERSION_2_BOOKMARKS_KEY, "{}");
+    storage.setItem(LEGACY_BOOKMARKS_KEY, "[]");
+    storage.setItem("unrelated.key", "kept");
+
+    clearBookmarks(storage);
+
+    expect(readRawBookmarks(storage)).toBeNull();
+    expect(storage.getItem("unrelated.key")).toBe("kept");
+  });
+
+  it("refuses to reset storage that cannot remove items", () => {
+    expectStorageError(
+      () => clearBookmarks({ getItem: () => null, setItem: () => {} }),
+      "remove",
+    );
+  });
+
+  it("preserves the newest raw payload when removal fails part way through", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CURRENT_BOOKMARKS_KEY, "{ broken");
+    storage.setItem(LEGACY_BOOKMARKS_KEY, "[]");
+    const guarded: StorageLike = {
+      getItem: (key) => storage.getItem(key),
+      setItem: (key, value) => storage.setItem(key, value),
+      removeItem: (key) => {
+        if (key === LEGACY_BOOKMARKS_KEY) throw new Error("blocked");
+        storage.removeItem(key);
+      },
+    };
+
+    expectStorageError(() => clearBookmarks(guarded), "remove");
+    expect(readRawBookmarks(storage)).toEqual({
+      key: CURRENT_BOOKMARKS_KEY,
+      value: "{ broken",
+    });
+  });
+
+  it("reports partial deletion accurately while preserving newer payloads", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CURRENT_BOOKMARKS_KEY, "{ broken");
+    storage.setItem(VERSION_2_BOOKMARKS_KEY, "{}");
+    storage.setItem(LEGACY_BOOKMARKS_KEY, "[]");
+    const guarded: StorageLike = {
+      getItem: (key) => storage.getItem(key),
+      setItem: (key, value) => storage.setItem(key, value),
+      removeItem: (key) => {
+        if (key === VERSION_2_BOOKMARKS_KEY) throw new Error("blocked");
+        storage.removeItem(key);
+      },
+    };
+
+    expect(() => clearBookmarks(guarded)).toThrow(
+      /Reset stopped after removing shortlist\.bookmarks\.v1/,
+    );
+    expect(storage.getItem(LEGACY_BOOKMARKS_KEY)).toBeNull();
+    expect(storage.getItem(VERSION_2_BOOKMARKS_KEY)).toBe("{}");
+    expect(storage.getItem(CURRENT_BOOKMARKS_KEY)).toBe("{ broken");
+  });
+
+  it("keeps malformed data readable for recovery instead of erasing it", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CURRENT_BOOKMARKS_KEY, "{ broken");
+
+    expect(() => loadBookmarks(storage)).toThrow(BookmarkStorageError);
+    expect(storage.getItem(CURRENT_BOOKMARKS_KEY)).toBe("{ broken");
+    expect(readRawBookmarks(storage)?.value).toBe("{ broken");
   });
 });
 

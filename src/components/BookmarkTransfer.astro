@@ -1,0 +1,94 @@
+<section class="transfer" aria-labelledby="transfer-heading">
+  <div class="transfer-heading">
+    <div>
+      <p class="step">04 / Backup</p>
+      <h2 id="transfer-heading">Export, import, and recover</h2>
+    </div>
+    <button id="export-bookmarks" class="transfer-button" type="button">
+      Export JSON
+    </button>
+  </div>
+
+  <div class="transfer-controls">
+    <div class="control-field">
+      <label for="import-file">Import a Shortlist JSON file</label>
+      <input
+        id="import-file"
+        type="file"
+        accept="application/json,.json"
+        aria-describedby="import-file-hint"
+      />
+      <span id="import-file-hint" class="control-hint">
+        Reads exports plus version 1, 2, and 3 backups. Up to 1 MiB and 5,000
+        bookmarks.
+      </span>
+    </div>
+    <div class="control-field">
+      <label for="import-strategy">Duplicate URLs</label>
+      <select id="import-strategy" aria-describedby="import-strategy-hint">
+        <option value="skip">Skip duplicates</option>
+        <option value="replace">Replace duplicates</option>
+      </select>
+      <span id="import-strategy-hint" class="control-hint">
+        Replacing keeps the saved short link and updates the details.
+      </span>
+    </div>
+  </div>
+
+  <p id="transfer-message" class="transfer-message" role="status" aria-live="polite">
+    Nothing leaves this browser. Imports are previewed before anything changes.
+  </p>
+
+  <div
+    id="import-preview"
+    class="import-preview"
+    role="group"
+    aria-labelledby="import-preview-heading"
+    hidden
+  >
+    <h3 id="import-preview-heading">Review this import</h3>
+    <p id="import-summary" class="import-summary"></p>
+    <ul id="import-details" class="import-details"></ul>
+    <div class="transfer-actions">
+      <button id="confirm-import" type="button">Apply import</button>
+      <button id="cancel-import" type="button" data-action="cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div
+    id="recovery-panel"
+    class="recovery-panel"
+    role="group"
+    aria-labelledby="recovery-heading"
+    hidden
+  >
+    <h3 id="recovery-heading">Saved data could not be read</h3>
+    <p id="recovery-details" class="recovery-details"></p>
+    <p class="recovery-note">
+      Nothing has been changed or erased. Download a copy first, then either
+      import a valid file to replace the unreadable data or reset this browser's
+      Shortlist storage.
+    </p>
+    <div class="transfer-actions">
+      <button id="download-raw" type="button">Download raw data</button>
+      <button id="download-all-raw" type="button" hidden>
+        Download all stored versions
+      </button>
+      <button id="reset-storage" type="button" data-action="cancel">
+        Reset local data
+      </button>
+    </div>
+    <div id="reset-confirm" class="reset-confirm" hidden>
+      <p role="alert">
+        This permanently deletes every Shortlist key in this browser. It cannot
+        be undone.
+      </p>
+      <div class="transfer-actions">
+        <button id="confirm-reset" type="button">Yes, erase local data</button>
+        <button id="cancel-reset" type="button" data-action="cancel">
+          Keep the data
+        </button>
+      </div>
+    </div>
+  </div>
+</section>

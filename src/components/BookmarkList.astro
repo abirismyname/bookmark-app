@@ -1,0 +1,30 @@
+<div class="list-panel">
+  <div class="list-heading">
+    <div>
+      <p class="step">02 / Your shortlist</p>
+      <h2>Saved bookmarks</h2>
+    </div>
+    <span id="bookmark-count" class="count">0 links</span>
+  </div>
+
+  <div id="empty-state" class="empty-state">
+    <span aria-hidden="true">↳</span>
+    <p>Your saved links will appear here.</p>
+  </div>
+  <ul id="bookmark-list" aria-live="polite"></ul>
+</div>
+
+<template id="bookmark-template">
+  <li class="bookmark">
+    <div class="bookmark-main">
+      <a class="bookmark-url" target="_blank" rel="noreferrer"></a>
+      <div class="slug-row">
+        <span class="slash" aria-hidden="true">/</span>
+        <code class="bookmark-slug"></code>
+      </div>
+    </div>
+    <button class="remove-button" type="button" aria-label="Remove bookmark">
+      Remove
+    </button>
+  </li>
+</template>

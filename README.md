@@ -1,57 +1,75 @@
-# Bookmark app
+# Shortlist
 
-A small Astro app that saves URLs under locally generated short slugs. Add
-editable titles, tags, and notes, then search across every bookmark field,
-filter by tag, and sort by date or title. Export and import the whole
-collection as JSON, and recover from unreadable local data. Bookmarks stay in
-browser `localStorage`, so no account or backend is required.
+Shortlist is an installable, local-first bookmark manager built with Astro. Save
+URLs, add titles, tags, and notes, search or filter the collection, and keep
+portable JSON backups. There are no accounts, analytics, backend, or remote
+sync: bookmark data stays in this browser's `localStorage`.
 
-## Run locally
+## Features
 
-```sh
-npm install
-npm run dev
-```
+- Save `http` and `https` URLs with collision-resistant six-character slugs.
+- Edit titles, tags, and notes; search every field; filter by tag; sort by date
+  or title.
+- Export deterministic JSON backups and preview imports before applying them.
+- Skip or replace duplicate URLs while preserving stable saved IDs and slugs.
+- Diagnose malformed storage, download raw recovery data, and require explicit
+  confirmation before reset.
+- Install as a PWA and reopen the production app shell offline after one
+  successful online load.
+- Keyboard, screen-reader, reduced-motion, touch, phone, tablet, narrow
+  landscape, and desktop support.
 
-Use `npm run build` to create a production build.
+## Install and offline use
 
-## Architecture
+Open the deployed production app in a browser that supports installable web
+apps, then use the browser's **Install app** or **Add to Home Screen** action.
+The manifest supplies standalone display metadata and 192 px, 512 px, maskable,
+and Apple touch icons.
 
-- `src/components/` contains the reusable Astro presentation components.
-- `src/domain/bookmark.ts` contains the bookmark model plus pure URL, slug,
-  metadata, search, filter, and sorting helpers.
-- `src/domain/bookmark-transfer.ts` is the pure export codec plus import
-  validation and schema migration.
-- `src/domain/bookmark-import-plan.ts` is the pure merge planner for duplicates
-  and identifier conflicts.
-- `src/storage/bookmark-storage.ts` owns serialization, local storage migration,
-  raw payload recovery, and explicit reset.
-- `src/app/bookmark-controller.ts` connects the browser UI to the domain and storage
-  modules.
+The service worker precaches the versioned production shell: HTML, JavaScript,
+CSS, manifest, and local icons. After the first successful load completes and
+the service worker takes control, navigation and core bookmark management work
+offline. Updates activate automatically, delete obsolete caches, and use
+content-hashed assets so a reopened app is not stranded on an old asset graph.
 
-Run `npm test` for the focused domain and storage unit tests.
+Offline limitations:
 
-## Local storage
+- A bookmark destination is still a normal external link and requires whatever
+  network access or independent browser cache that site needs.
+- Shortlist does not request, inspect, or cache external bookmark destinations.
+- Bookmark records and imports are never placed in Cache Storage. They remain
+  exclusively in `localStorage`.
+- Clearing browser site data removes local bookmarks and the offline app shell.
+  Export backups regularly.
+- Installation UI and service-worker support vary by browser and platform.
 
-Current data is stored at `shortlist.bookmarks.v3` in a versioned envelope.
-Version 3 adds `title`, `tags`, and `notes` to each bookmark. On first load, a
-valid version 2 envelope or legacy `shortlist.bookmarks.v1` array is copied into
-version 3 with a hostname-based title, an empty tag list, and empty notes.
-Bookmark IDs, URLs, slugs, timestamps, and order are retained, and older keys
-remain untouched. Invalid or inaccessible data at the newest available version
-is reported in the UI and is never overwritten or bypassed by older data.
+## Privacy and local architecture
 
-## Export and import
+All application logic runs in the browser. Import uses the File API; export and
+recovery downloads use temporary object URLs. No bookmark, note, query, file, or
+diagnostic is transmitted by Shortlist. Because exports contain all bookmark
+fields, including notes, treat backup files as private.
 
-Export writes a deterministic JSON document for a given collection and export
-timestamp: bookmarks stay in collection order, keys keep a fixed order, and the
-file is pretty printed with two spaces and a trailing newline.
+| Area | Responsibility |
+| --- | --- |
+| `src/components/` | Semantic Astro presentation components |
+| `src/domain/bookmark.ts` | Bookmark model, URL validation, slugs, metadata, search, filtering, sorting |
+| `src/domain/bookmark-transfer.ts` | Strict export codec and import schema migration |
+| `src/domain/bookmark-import-plan.ts` | Duplicate and identifier-conflict planning |
+| `src/storage/bookmark-storage.ts` | Versioned persistence, migration, diagnostics, reset |
+| `src/app/bookmark-controller.ts` | Browser events, rendering, focus, announcements |
+| `astro.config.mjs` | Static PWA manifest and Workbox precache policy |
+| `tests/e2e/` | Built-app browser and offline behavior |
+
+Astro emits a static site. There is no server-side application layer.
+
+## Storage and preservation guarantees
+
+Current records use `shortlist.bookmarks.v3`:
 
 ```json
 {
-  "schema": "https://shortlist.local/schemas/bookmarks",
-  "version": 1,
-  "exportedAt": "2025-03-04T05:06:07.000Z",
+  "version": 3,
   "bookmarks": [
     {
       "id": "9f1c7c8e-0a1b-4c2d-8e3f-4a5b6c7d8e9f",
@@ -66,82 +84,89 @@ file is pretty printed with two spaces and a trailing newline.
 }
 ```
 
-`schema` and `version` are what future releases read to migrate older files, so
-both are required and must match exactly.
+On first load, a valid version 2 envelope or legacy
+`shortlist.bookmarks.v1` array is copied into version 3. IDs, URLs, slugs,
+timestamps, and order are preserved; a hostname title and empty tags/notes are
+added. Older keys are deliberately left untouched. PWA installation, service
+worker updates, and Cache Storage cleanup never clear, move, or rewrite these
+`localStorage` keys.
 
-### Privacy
+If the newest present storage version is invalid or inaccessible, Shortlist
+does not silently fall back or overwrite it. The recovery panel reports the
+key, size, JSON shape, and a short preview.
 
-Export and import run entirely in the browser. Files are read with the File API
-and written with an object URL; nothing is uploaded, and no network request is
-made. The export contains every field of every bookmark, including notes, so
-treat the file as private data.
+## Import, export, duplicates, and recovery
 
-### Schema compatibility
+Export creates a version 1 interchange document with schema
+`https://shortlist.local/schemas/bookmarks`. Import accepts that format plus
+storage versions 1, 2, and 3. Validation rejects the entire file before writing
+when it is not JSON, exceeds 1 MiB or 5,000 records, declares an unsupported
+schema/version, contains unexpected or ill-typed fields, has a non-HTTP(S) URL,
+or exceeds metadata limits.
 
-Import accepts four documented shapes and migrates each explicitly:
+Every import is previewed:
 
-| Format | Shape | Fields read |
-| --- | --- | --- |
-| Export version 1 | `{ schema, version: 1, exportedAt, bookmarks }` | all fields |
-| Storage version 3 | `{ version: 3, bookmarks }` | all fields |
-| Storage version 2 | `{ version: 2, bookmarks }` | `id`, `url`, `slug`, `createdAt` |
-| Storage version 1 | bare array | `id`, `url`, `slug`, `createdAt` |
+- **Skip duplicates** keeps an existing normalized URL unchanged.
+- **Replace duplicates** updates metadata and timestamp while preserving the
+  existing ID and slug. Legacy backups keep existing metadata that those old
+  formats could not represent.
+- An ID or slug collision on another URL receives a new collision-free value;
+  unrelated records are not overwritten.
 
-Version 1 and 2 records gain a hostname title, an empty tag list, and empty
-notes, exactly as the storage migration does.
+The complete planned collection is persisted before the UI changes. Recovery
+offers exact raw-payload downloads first. Reset removes only known Shortlist
+keys, older versions first, and requires a second confirmation.
 
-Validation is strict, because import files are untrusted input. A file is
-rejected whole, with no change to saved data, when it is not `.json`, is larger
-than 1 MiB (`MAX_IMPORT_BYTES`), holds more than 5,000 bookmarks
-(`MAX_BOOKMARK_COLLECTION`), is not valid JSON, declares an unknown schema or
-version, carries an unexpected top-level or bookmark property, has an ill-typed
-field, uses a URL that is not `http` or `https`, or exceeds the title, tag, or
-notes limits. Errors name the offending bookmark by position.
+## Development
 
-Identifiers are treated separately in storage backups, because older storage
-accepted empty `id`, `slug`, and `createdAt` values. Those legacy values are
-repaired during the import plan with a fresh ID, a fresh 6-character slug, or
-the current time. The current interchange format requires valid identifiers and
-timestamps; malformed or ill-typed current exports are rejected.
+Requires Node.js 22 or a compatible current LTS release.
 
-### Duplicates and conflicts
+```sh
+npm ci
+npm run dev
+```
 
-Import is previewed before anything is written. The preview reports how many
-bookmarks were read, how many will be added, replaced, or skipped, and the
-resulting collection size.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start Astro development mode |
+| `npm test` | Run domain and storage unit tests |
+| `npm run check` | Run Astro and TypeScript checks |
+| `npm run build` | Generate the production PWA in `dist/` |
+| `npx playwright install chromium` | Install the E2E browser once |
+| `npm run test:e2e` | Build, serve, and test the production app |
+| `npm run validate` | Run unit, check, build, and full E2E validation |
 
-- **Duplicate URL** — identity is the normalized URL, matched against saved
-  bookmarks and against earlier entries in the same file. *Skip duplicates*
-  keeps the saved bookmark unchanged. *Replace duplicates* overwrites the title,
-  tags, notes, and timestamp, but keeps the saved `id` and short link so
-  existing references stay valid. Version 1 and 2 backups never carried title,
-  tag, or note data, so replacing from those legacy formats keeps the existing
-  metadata instead of overwriting it with migration defaults.
-- **ID or short link conflict on a different URL** — the incoming record keeps
-  its URL and metadata and receives a newly generated, collision-free ID or
-  slug. No unrelated record is dropped or overwritten.
+CI installs Chromium with Playwright and runs `npm run validate`. E2E tests use
+Astro's local production preview and make no third-party network requests.
 
-Applying an import persists the entire planned collection first and only then
-updates what is on screen, so a storage failure leaves the previous collection
-exactly as it was.
+## Browser support
 
-## Recovery
+The core app needs modern `localStorage`, File, Blob, URL, and Web Crypto APIs.
+The tested browser target is current Chromium. Current Firefox and Safari
+support the core local bookmark experience; PWA installation UI and standalone
+behavior differ. Private browsing, enterprise policy, quota limits, or disabled
+site storage can prevent persistence. Shortlist surfaces those failures rather
+than claiming data was saved.
 
-Invalid or inaccessible data at the newest available version is never
-overwritten or bypassed by older data. When it cannot be read, the app shows
-which key failed, its size, whether it is valid JSON, and the first characters
-of the payload.
+## Four-layer stack
 
-From there nothing is destructive by default:
+1. **PR #8:** modular domain, storage, component, and controller foundation.
+2. **PR #9:** titles, tags, notes, search, filtering, sorting, and storage v3.
+3. **PR #10:** safe import/export, duplicate planning, and recovery tooling.
+4. **This layer:** installable offline PWA, accessibility/responsive polish,
+   built-app E2E coverage, documentation, and CI.
 
-- **Download raw data** saves the stored bytes exactly as written, before any
-  other action. When older Shortlist keys also exist, **Download all stored
-  versions** saves every key and its exact raw value in one recovery bundle
-  before reset can remove them.
-- **Import a valid file** replaces the unreadable data, because the existing
-  bookmarks cannot be trusted. The preview says so explicitly and still requires
-  confirmation.
-- **Reset local data** requires a second explicit confirmation and only then
-  removes the Shortlist keys. Older keys are removed first, so a partial failure
-  still leaves the newest raw payload in place to download and reports any older
-  key that was already removed.
+## Manual demo
+
+1. Open Shortlist, save `https://example.com/docs`, then edit it to **Example
+   docs**, tags **work, reference**, and a short note.
+2. Save a second URL; search the note, filter **work**, change sorting, and reset
+   the view.
+3. Export JSON. Re-import it with each duplicate strategy and inspect the
+   preview before cancelling or applying.
+4. Reload to show persistence. In DevTools, seed malformed
+   `shortlist.bookmarks.v3` data, reload, download the raw backup, open reset,
+   cancel with Escape, then confirm reset.
+5. Install the app, load it once online, switch the browser offline, and reload.
+   The shell and saved local bookmarks remain available; opening an external
+   bookmark still requires network access.

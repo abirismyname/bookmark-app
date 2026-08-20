@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Shortlist</title>
+  <rect width="512" height="512" rx="112" fill="#f2efe8"/>
+  <path d="M152 92h208a28 28 0 0 1 28 28v314l-132-82-132 82V120a28 28 0 0 1 28-28Z" fill="#244b35"/>
+  <path d="M206 184h100M206 240h100" fill="none" stroke="#e9eea7" stroke-linecap="round" stroke-width="28"/>
+</svg>

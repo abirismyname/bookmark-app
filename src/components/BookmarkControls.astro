@@ -15,8 +15,10 @@
       <input
         id="bookmark-search"
         type="search"
+        name="search"
         placeholder="Title, URL, tag, note, or slug"
         autocomplete="off"
+        aria-describedby="results-summary"
       />
     </div>
     <div class="control-field">
@@ -34,7 +36,13 @@
       </select>
     </div>
   </div>
-  <p id="results-summary" class="results-summary" role="status" aria-live="polite">
+  <p
+    id="results-summary"
+    class="results-summary"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+  >
     Showing all saved bookmarks, newest first.
   </p>
 </section>

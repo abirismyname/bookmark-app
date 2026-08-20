@@ -1,12 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600&family=Playfair+Display:ital,wght@1,600&display=swap");
-
 * {
   box-sizing: border-box;
 }
 
 :root {
   color-scheme: light;
-  font-family: "Manrope", sans-serif;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
   color: #17211b;
   background: #f2efe8;
   font-synthesis: none;
@@ -28,6 +28,30 @@ textarea {
   font: inherit;
 }
 
+a {
+  overflow-wrap: anywhere;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 10;
+  top: 12px;
+  left: 12px;
+  padding: 12px 16px;
+  color: #fff;
+  background: #17211b;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+:focus-visible {
+  outline: 3px solid #b55d2f;
+  outline-offset: 3px;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -39,6 +63,9 @@ main {
 }
 
 .hero {
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-top: 36px;
   min-height: 460px;
   display: grid;
   grid-template-columns: 1fr 2fr;
@@ -64,7 +91,7 @@ main {
   color: #f2efe8;
   background: #244b35;
   border-radius: 2px 2px 12px 12px;
-  font-family: "DM Mono", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 14px;
 }
 
@@ -76,7 +103,7 @@ main {
 .step {
   margin: 0 0 18px;
   color: #52715f;
-  font-family: "DM Mono", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -93,7 +120,7 @@ h1 {
 
 h1 em {
   color: #397b52;
-  font-family: "Playfair Display", serif;
+  font-family: Iowan Old Style, Baskerville, "Times New Roman", serif;
   font-weight: 600;
 }
 
@@ -154,6 +181,7 @@ h2 {
 
 .form-panel input {
   min-width: 0;
+  min-height: 54px;
   padding: 17px 18px;
   border: 1px solid #789080;
   border-radius: 0;
@@ -167,13 +195,15 @@ h2 {
   color: #9bb0a1;
 }
 
-.form-panel input:focus {
+.form-panel input:focus-visible {
   border-color: #eef0bd;
   background: rgba(255, 255, 255, 0.1);
 }
 
 button {
   cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 button:disabled,
@@ -264,7 +294,7 @@ input:disabled {
 }
 
 .reset-button {
-  padding: 8px 0;
+  padding: 8px 4px;
   border: 0;
   border-bottom: 1px solid #829087;
   color: #397b52;
@@ -296,7 +326,7 @@ input:disabled {
   padding: 7px 11px;
   border: 1px solid #b8beb7;
   color: #637068;
-  font-family: "DM Mono", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 11px;
   text-transform: uppercase;
 }
@@ -336,6 +366,7 @@ input:disabled {
 }
 
 .bookmark-title {
+  overflow-wrap: anywhere;
   margin: 0 0 7px;
   font-size: 18px;
   font-weight: 600;
@@ -344,13 +375,11 @@ input:disabled {
 
 .bookmark-url {
   display: block;
-  overflow: hidden;
   color: #17211b;
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .bookmark-url:hover {
@@ -367,11 +396,13 @@ input:disabled {
 }
 
 .bookmark-tags li {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: 4px 7px;
   border: 1px solid #c4cdc6;
   color: #45634f;
   background: #edf1e9;
-  font-family: "DM Mono", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
 }
 
@@ -382,6 +413,7 @@ input:disabled {
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .slug-row {
@@ -397,7 +429,7 @@ input:disabled {
 
 .bookmark-slug {
   color: #397b52;
-  font-family: "DM Mono", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
 }
 
@@ -409,7 +441,7 @@ input:disabled {
 
 .edit-button,
 .remove-button {
-  padding: 7px 0;
+  padding: 7px 4px;
   border: 0;
   border-bottom: 1px solid #9da49f;
   color: #687169;
@@ -567,6 +599,7 @@ input:disabled {
   color: #4d5b52;
   font-size: 13px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .recovery-details {
@@ -579,6 +612,7 @@ input:disabled {
   color: #5f6862;
   font-size: 12px;
   line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 
 .transfer-actions {
@@ -620,6 +654,7 @@ input:disabled {
 }
 
 @media (max-width: 760px) {
+  .hero,
   main {
     width: min(100% - 28px, 620px);
     padding-top: 22px;
@@ -662,9 +697,14 @@ input:disabled {
 }
 
 @media (max-width: 430px) {
+  .hero,
   main {
     width: 100%;
     padding: 20px 14px 40px;
+  }
+
+  .hero {
+    padding-top: 20px;
   }
 
   h1 {
@@ -706,6 +746,33 @@ input:disabled {
 
   .bookmark-actions {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .bookmark-actions button,
+  .transfer-actions button,
+  .edit-actions button {
+    flex: 1 1 auto;
+  }
+
+  .edit-actions,
+  .transfer-actions {
+    align-items: stretch;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .hero {
+    min-height: auto;
+    padding-bottom: 36px;
+  }
+
+  .intro {
+    padding-top: 30px;
+  }
+
+  h1 {
+    font-size: clamp(42px, 10vw, 64px);
   }
 }
 

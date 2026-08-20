@@ -35,15 +35,22 @@
     </div>
   </div>
 
-  <p id="transfer-message" class="transfer-message" role="status" aria-live="polite">
+  <p
+    id="transfer-message"
+    class="transfer-message"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+  >
     Nothing leaves this browser. Imports are previewed before anything changes.
   </p>
 
   <div
     id="import-preview"
     class="import-preview"
-    role="group"
+    role="region"
     aria-labelledby="import-preview-heading"
+    tabindex="-1"
     hidden
   >
     <h3 id="import-preview-heading">Review this import</h3>
@@ -58,8 +65,9 @@
   <div
     id="recovery-panel"
     class="recovery-panel"
-    role="group"
+    role="region"
     aria-labelledby="recovery-heading"
+    tabindex="-1"
     hidden
   >
     <h3 id="recovery-heading">Saved data could not be read</h3>
@@ -78,8 +86,14 @@
         Reset local data
       </button>
     </div>
-    <div id="reset-confirm" class="reset-confirm" hidden>
-      <p role="alert">
+    <div
+      id="reset-confirm"
+      class="reset-confirm"
+      role="group"
+      aria-labelledby="reset-confirm-heading"
+      hidden
+    >
+      <p id="reset-confirm-heading">
         This permanently deletes every Shortlist key in this browser. It cannot
         be undone.
       </p>

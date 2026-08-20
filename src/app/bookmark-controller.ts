@@ -150,6 +150,11 @@ export function initializeBookmarkController(
     refreshPendingImport();
     elements.input.focus();
   });
+  elements.transfer.resetConfirm.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    elements.transfer.cancelReset.click();
+  });
 
   elements.list.addEventListener("click", (event) => {
     if (!storageReady || !activeStorage) return;
@@ -179,6 +184,12 @@ export function initializeBookmarkController(
     }
     if (button.dataset.action !== "remove") return;
 
+    const removedBookmark = bookmarks.find(
+      (bookmark) => bookmark.id === item.dataset.bookmarkId,
+    );
+    const removedIndex = bookmarks.findIndex(
+      (bookmark) => bookmark.id === item.dataset.bookmarkId,
+    );
     const nextBookmarks = bookmarks.filter(
       (bookmark) => bookmark.id !== item.dataset.bookmarkId,
     );
@@ -191,9 +202,20 @@ export function initializeBookmarkController(
 
     bookmarks = nextBookmarks;
     if (activeDraft?.id === item.dataset.bookmarkId) activeDraft = null;
-    setMessage(elements, "Bookmark removed.");
+    setMessage(
+      elements,
+      removedBookmark ? `Removed “${removedBookmark.title}”.` : "Bookmark removed.",
+    );
     render(elements, bookmarks);
     refreshPendingImport();
+    const nextItem = elements.list.children.item(
+      Math.min(removedIndex, elements.list.children.length - 1),
+    );
+    const nextEdit =
+      nextItem instanceof HTMLLIElement
+        ? nextItem.querySelector<HTMLButtonElement>(".edit-button")
+        : null;
+    (nextEdit ?? elements.input).focus();
   });
 
   elements.list.addEventListener("submit", (event) => {
@@ -254,6 +276,10 @@ export function initializeBookmarkController(
     setMessage(elements, `Updated “${updated.title}”.`);
     render(elements, bookmarks);
     refreshPendingImport();
+    elements.list
+      .querySelector<HTMLLIElement>(`[data-bookmark-id="${CSS.escape(updated.id)}"]`)
+      ?.querySelector<HTMLButtonElement>(".edit-button")
+      ?.focus();
   });
 
   elements.list.addEventListener("input", (event) => {
@@ -452,6 +478,7 @@ export function initializeBookmarkController(
     setMessage(elements, "Enter a complete http or https URL.");
     setTransferMessage(elements, "Local Shortlist data was erased. Starting fresh.");
     render(elements, bookmarks);
+    elements.input.focus();
   });
 
   async function previewSelectedFile(): Promise<void> {
@@ -743,6 +770,10 @@ function setTransferMessage(
 ): void {
   elements.transfer.transferMessage.textContent = text;
   elements.transfer.transferMessage.classList.toggle("error", isError);
+  elements.transfer.transferMessage.setAttribute(
+    "role",
+    isError ? "alert" : "status",
+  );
 }
 
 function showImportPreview(
@@ -789,6 +820,7 @@ function showRecovery(
 
   elements.transfer.resetConfirm.hidden = true;
   elements.transfer.recoveryPanel.hidden = false;
+  elements.transfer.recoveryPanel.focus();
 }
 
 function hideRecovery(elements: BookmarkElements): void {
@@ -849,6 +881,8 @@ function setMessage(
 ): void {
   elements.message.textContent = text;
   elements.message.classList.toggle("error", isError);
+  elements.message.setAttribute("role", isError ? "alert" : "status");
+  elements.input.setAttribute("aria-invalid", String(isError));
 }
 
 function renderBookmarkList(
@@ -876,6 +910,7 @@ function renderBookmarkList(
     title.textContent = bookmark.title;
     url.href = bookmark.url;
     url.textContent = bookmark.url;
+    url.setAttribute("aria-label", `${bookmark.title} (opens in a new tab)`);
     slug.textContent = bookmark.slug;
     for (const tag of bookmark.tags) {
       const tagItem = elements.list.ownerDocument.createElement("li");
@@ -887,6 +922,13 @@ function renderBookmarkList(
     notes.hidden = !bookmark.notes;
     edit.setAttribute("aria-label", `Edit ${bookmark.title}`);
     remove.setAttribute("aria-label", `Remove ${bookmark.title}`);
+    const error = fragment.querySelector<HTMLElement>(".edit-error");
+    const editTitle = fragment.querySelector<HTMLInputElement>('input[name="title"]');
+    if (error && editTitle) {
+      const errorId = `edit-error-${bookmark.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      error.id = errorId;
+      editTitle.setAttribute("aria-errormessage", errorId);
+    }
     elements.list.append(fragment);
   }
 }

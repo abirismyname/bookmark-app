@@ -1,0 +1,26 @@
+<div class="form-panel">
+  <p class="step">01 / Add a link</p>
+  <h2 id="add-heading">What do you want to remember?</h2>
+  <form id="bookmark-form" novalidate>
+    <label for="bookmark-url">Original URL</label>
+    <div class="input-row">
+      <input
+        id="bookmark-url"
+        name="url"
+        type="url"
+        inputmode="url"
+        autocomplete="url"
+        placeholder="https://example.com/article"
+        required
+        aria-describedby="form-message"
+      />
+      <button type="submit">
+        Save link
+        <span aria-hidden="true">↗</span>
+      </button>
+    </div>
+    <p id="form-message" class="message" role="status" aria-live="polite">
+      Enter a complete http or https URL.
+    </p>
+  </form>
+</div>

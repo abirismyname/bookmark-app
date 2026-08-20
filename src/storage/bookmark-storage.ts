@@ -1,8 +1,14 @@
-import { isBookmark, type Bookmark } from "../domain/bookmark";
+import {
+  isBookmark,
+  isBookmarkCore,
+  withMetadataDefaults,
+  type Bookmark,
+} from "../domain/bookmark";
 
 export const LEGACY_BOOKMARKS_KEY = "shortlist.bookmarks.v1";
-export const CURRENT_BOOKMARKS_KEY = "shortlist.bookmarks.v2";
-export const CURRENT_STORAGE_VERSION = 2;
+export const VERSION_2_BOOKMARKS_KEY = "shortlist.bookmarks.v2";
+export const CURRENT_BOOKMARKS_KEY = "shortlist.bookmarks.v3";
+export const CURRENT_STORAGE_VERSION = 3;
 
 export interface BookmarkStorageEnvelope {
   version: typeof CURRENT_STORAGE_VERSION;
@@ -33,7 +39,7 @@ export class BookmarkStorageError extends Error {
 
 export interface LoadedBookmarks {
   bookmarks: Bookmark[];
-  source: "empty" | "current" | "legacy";
+  source: "empty" | "current" | "version2" | "legacy";
 }
 
 export function serializeBookmarks(bookmarks: readonly Bookmark[]): string {
@@ -65,11 +71,29 @@ export function parseBookmarkEnvelope(serialized: string): Bookmark[] {
 
 export function parseLegacyBookmarks(serialized: string): Bookmark[] {
   const value = parseJson(serialized, "Legacy bookmark storage is not valid JSON.");
-  if (!Array.isArray(value) || !value.every(isBookmark)) {
+  if (!Array.isArray(value) || !value.every(isBookmarkCore)) {
     throw invalidStorage("Legacy bookmark storage has an invalid format.");
   }
 
-  return value;
+  return value.map(withMetadataDefaults);
+}
+
+export function parseVersion2Envelope(serialized: string): Bookmark[] {
+  const value = parseJson(serialized, "Version 2 bookmark storage is not valid JSON.");
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidStorage("Version 2 bookmark storage has an invalid format.");
+  }
+
+  const envelope = value as Record<string, unknown>;
+  if (
+    envelope.version !== 2 ||
+    !Array.isArray(envelope.bookmarks) ||
+    !envelope.bookmarks.every(isBookmarkCore)
+  ) {
+    throw invalidStorage("Version 2 bookmark storage has an invalid format.");
+  }
+
+  return envelope.bookmarks.map(withMetadataDefaults);
 }
 
 export function loadBookmarks(storage: StorageLike): LoadedBookmarks {
@@ -78,12 +102,25 @@ export function loadBookmarks(storage: StorageLike): LoadedBookmarks {
     return { bookmarks: parseBookmarkEnvelope(current), source: "current" };
   }
 
+  const version2 = readItem(storage, VERSION_2_BOOKMARKS_KEY);
+  if (version2 !== null) {
+    const bookmarks = parseVersion2Envelope(version2);
+    migrateBookmarks(storage, bookmarks);
+    return { bookmarks, source: "version2" };
+  }
+
   const legacy = readItem(storage, LEGACY_BOOKMARKS_KEY);
   if (legacy === null) {
     return { bookmarks: [], source: "empty" };
   }
 
   const bookmarks = parseLegacyBookmarks(legacy);
+  migrateBookmarks(storage, bookmarks);
+
+  return { bookmarks, source: "legacy" };
+}
+
+function migrateBookmarks(storage: StorageLike, bookmarks: Bookmark[]): void {
   try {
     storage.setItem(CURRENT_BOOKMARKS_KEY, serializeBookmarks(bookmarks));
   } catch (cause) {
@@ -93,8 +130,6 @@ export function loadBookmarks(storage: StorageLike): LoadedBookmarks {
       { cause },
     );
   }
-
-  return { bookmarks, source: "legacy" };
 }
 
 export function saveBookmarks(

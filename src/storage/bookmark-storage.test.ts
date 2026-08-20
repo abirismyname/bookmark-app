@@ -5,15 +5,17 @@ import {
   CURRENT_BOOKMARKS_KEY,
   CURRENT_STORAGE_VERSION,
   LEGACY_BOOKMARKS_KEY,
+  VERSION_2_BOOKMARKS_KEY,
   loadBookmarks,
   parseBookmarkEnvelope,
   parseLegacyBookmarks,
+  parseVersion2Envelope,
   saveBookmarks,
   serializeBookmarks,
   type StorageLike,
 } from "./bookmark-storage";
 
-const legacyBookmarks: Bookmark[] = [
+const legacyBookmarks = [
   {
     id: "original-id",
     url: "https://example.com/original?kept=yes",
@@ -27,6 +29,12 @@ const legacyBookmarks: Bookmark[] = [
     createdAt: "",
   },
 ];
+const migratedBookmarks: Bookmark[] = legacyBookmarks.map((bookmark) => ({
+  ...bookmark,
+  title: new URL(bookmark.url).hostname,
+  tags: [],
+  notes: "",
+}));
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();
@@ -42,24 +50,24 @@ class MemoryStorage implements StorageLike {
 
 describe("bookmark serialization", () => {
   it("serializes bookmarks in an explicit current-version envelope", () => {
-    expect(JSON.parse(serializeBookmarks(legacyBookmarks))).toEqual({
+    expect(JSON.parse(serializeBookmarks(migratedBookmarks))).toEqual({
       version: CURRENT_STORAGE_VERSION,
-      bookmarks: legacyBookmarks,
+      bookmarks: migratedBookmarks,
     });
   });
 
   it("parses a valid current envelope without changing values", () => {
-    expect(parseBookmarkEnvelope(serializeBookmarks(legacyBookmarks))).toEqual(
-      legacyBookmarks,
+    expect(parseBookmarkEnvelope(serializeBookmarks(migratedBookmarks))).toEqual(
+      migratedBookmarks,
     );
   });
 
   it.each([
     "not json",
     "[]",
-    '{"version":1,"bookmarks":[]}',
-    '{"version":2}',
-    '{"version":2,"bookmarks":[{"id":"x"}]}',
+    '{"version":2,"bookmarks":[]}',
+    '{"version":3}',
+    '{"version":3,"bookmarks":[{"id":"x"}]}',
   ])("rejects invalid current storage: %s", (serialized) => {
     expect(() => parseBookmarkEnvelope(serialized)).toThrow(BookmarkStorageError);
   });
@@ -70,6 +78,14 @@ describe("bookmark serialization", () => {
     '[{"id":"x","url":"ftp://example.com","slug":"x","createdAt":"now"}]',
   ])("rejects invalid legacy storage: %s", (serialized) => {
     expect(() => parseLegacyBookmarks(serialized)).toThrow(BookmarkStorageError);
+  });
+
+  it("adds metadata defaults when parsing version 2 and legacy data", () => {
+    const version2 = JSON.stringify({ version: 2, bookmarks: legacyBookmarks });
+    expect(parseVersion2Envelope(version2)).toEqual(migratedBookmarks);
+    expect(parseLegacyBookmarks(JSON.stringify(legacyBookmarks))).toEqual(
+      migratedBookmarks,
+    );
   });
 });
 
@@ -83,7 +99,7 @@ describe("loadBookmarks", () => {
 
   it("loads the current envelope without consulting or changing legacy data", () => {
     const storage = new MemoryStorage();
-    const current = [{ ...legacyBookmarks[0]!, id: "current-id" }];
+    const current = [{ ...migratedBookmarks[0]!, id: "current-id" }];
     storage.values.set(CURRENT_BOOKMARKS_KEY, serializeBookmarks(current));
     storage.values.set(LEGACY_BOOKMARKS_KEY, JSON.stringify(legacyBookmarks));
 
@@ -96,19 +112,35 @@ describe("loadBookmarks", () => {
     );
   });
 
-  it("migrates every valid v1 record verbatim and leaves the legacy key intact", () => {
+  it("migrates every valid v1 core field and leaves the legacy key intact", () => {
     const storage = new MemoryStorage();
     const serializedLegacy = JSON.stringify(legacyBookmarks);
     storage.values.set(LEGACY_BOOKMARKS_KEY, serializedLegacy);
 
     expect(loadBookmarks(storage)).toEqual({
-      bookmarks: legacyBookmarks,
+      bookmarks: migratedBookmarks,
       source: "legacy",
     });
     expect(parseBookmarkEnvelope(storage.values.get(CURRENT_BOOKMARKS_KEY)!)).toEqual(
-      legacyBookmarks,
+      migratedBookmarks,
     );
     expect(storage.values.get(LEGACY_BOOKMARKS_KEY)).toBe(serializedLegacy);
+  });
+
+  it("migrates version 2 before consulting v1 and leaves both old keys intact", () => {
+    const storage = new MemoryStorage();
+    const version2 = JSON.stringify({ version: 2, bookmarks: legacyBookmarks });
+    storage.values.set(VERSION_2_BOOKMARKS_KEY, version2);
+    storage.values.set(LEGACY_BOOKMARKS_KEY, "malformed but unused");
+
+    expect(loadBookmarks(storage)).toEqual({
+      bookmarks: migratedBookmarks,
+      source: "version2",
+    });
+    expect(parseBookmarkEnvelope(storage.values.get(CURRENT_BOOKMARKS_KEY)!)).toEqual(
+      migratedBookmarks,
+    );
+    expect(storage.values.get(VERSION_2_BOOKMARKS_KEY)).toBe(version2);
   });
 
   it("does not overwrite malformed current data with a valid legacy array", () => {
@@ -128,6 +160,17 @@ describe("loadBookmarks", () => {
 
     expect(() => loadBookmarks(storage)).toThrowError(
       "Legacy bookmark storage is not valid JSON.",
+    );
+    expect(storage.values.has(CURRENT_BOOKMARKS_KEY)).toBe(false);
+  });
+
+  it("does not overwrite malformed version 2 data or fall back to v1", () => {
+    const storage = new MemoryStorage();
+    storage.values.set(VERSION_2_BOOKMARKS_KEY, "malformed version 2 data");
+    storage.values.set(LEGACY_BOOKMARKS_KEY, JSON.stringify(legacyBookmarks));
+
+    expect(() => loadBookmarks(storage)).toThrowError(
+      "Version 2 bookmark storage is not valid JSON.",
     );
     expect(storage.values.has(CURRENT_BOOKMARKS_KEY)).toBe(false);
   });
@@ -159,10 +202,10 @@ describe("loadBookmarks", () => {
 describe("saveBookmarks", () => {
   it("writes only the current versioned key", () => {
     const storage = new MemoryStorage();
-    saveBookmarks(storage, legacyBookmarks);
+    saveBookmarks(storage, migratedBookmarks);
 
     expect(parseBookmarkEnvelope(storage.values.get(CURRENT_BOOKMARKS_KEY)!)).toEqual(
-      legacyBookmarks,
+      migratedBookmarks,
     );
     expect(storage.values.has(LEGACY_BOOKMARKS_KEY)).toBe(false);
   });
@@ -175,7 +218,7 @@ describe("saveBookmarks", () => {
       },
     };
 
-    expectStorageError(() => saveBookmarks(storage, legacyBookmarks), "write");
+    expectStorageError(() => saveBookmarks(storage, migratedBookmarks), "write");
   });
 });
 

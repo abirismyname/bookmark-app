@@ -1,0 +1,40 @@
+<section class="organization" aria-labelledby="organization-heading">
+  <div class="organization-heading">
+    <div>
+      <p class="step">02 / Organize</p>
+      <h2 id="organization-heading">Find the right link</h2>
+    </div>
+    <button id="reset-organization" class="reset-button" type="button" disabled>
+      Reset view
+    </button>
+  </div>
+
+  <div class="organization-controls">
+    <div class="control-field search-field">
+      <label for="bookmark-search">Search bookmarks</label>
+      <input
+        id="bookmark-search"
+        type="search"
+        placeholder="Title, URL, tag, note, or slug"
+        autocomplete="off"
+      />
+    </div>
+    <div class="control-field">
+      <label for="bookmark-tag-filter">Filter by tag</label>
+      <select id="bookmark-tag-filter">
+        <option value="">All tags</option>
+      </select>
+    </div>
+    <div class="control-field">
+      <label for="bookmark-sort">Sort by</label>
+      <select id="bookmark-sort">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="title">Title A-Z</option>
+      </select>
+    </div>
+  </div>
+  <p id="results-summary" class="results-summary" role="status" aria-live="polite">
+    Showing all saved bookmarks, newest first.
+  </p>
+</section>
